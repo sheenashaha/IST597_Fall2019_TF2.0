@@ -1,9 +1,10 @@
 """
-Author: Sheena Shaha  (based on starter by aam35)
+Author: Sheena Shaha
+Assignment 1 - Problem 2: Logistic Regression on Fashion-MNIST
 """
 
 import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import numpy as np
 import tensorflow as tf
@@ -11,12 +12,15 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
-from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
 
-tf.executing_eagerly()  # confirm eager mode
+# -----------------------------------------------------------
+# Confirm eager execution (TF2 does this by default)
+# -----------------------------------------------------------
+print("Eager execution:", tf.executing_eagerly())
 
 # -----------------------------------------------------------
 # Parameters
@@ -24,9 +28,11 @@ tf.executing_eagerly()  # confirm eager mode
 learning_rate = 0.001
 batch_size = 128
 n_epochs = 10
+n_classes = 10
+img_shape = (28, 28)
 
 # -----------------------------------------------------------
-# Step 1: Load Fashion-MNIST dataset (no keras models!)
+# Step 1: Load Fashion-MNIST dataset
 # -----------------------------------------------------------
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.fashion_mnist.load_data()
 
@@ -36,15 +42,10 @@ test_images = test_images.astype(np.float32) / 255.0
 train_images = train_images.reshape(-1, 28 * 28)
 test_images = test_images.reshape(-1, 28 * 28)
 
-n_train = train_images.shape[0]
-n_test = test_images.shape[0]
-n_classes = 10
-img_shape = (28, 28)
-
 # Split training set into train/validation
 train_X, val_X, train_y, val_y = train_test_split(train_images, train_labels, test_size=0.1, random_state=42)
 
-# One-hot encode
+# One-hot encode labels
 train_y_oh = tf.one_hot(train_y, depth=n_classes)
 val_y_oh = tf.one_hot(val_y, depth=n_classes)
 test_y_oh = tf.one_hot(test_labels, depth=n_classes)
@@ -70,18 +71,15 @@ def model(x):
     return logits
 
 # -----------------------------------------------------------
-# Step 5: Define loss function
+# Step 5: Define loss and optimizer
 # -----------------------------------------------------------
 def loss_fn(y_true, logits):
     return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=logits))
 
-# -----------------------------------------------------------
-# Step 6: Define optimizer
-# -----------------------------------------------------------
 optimizer = tf.optimizers.Adam(learning_rate)
 
 # -----------------------------------------------------------
-# Step 7: Define accuracy metric
+# Step 6: Define accuracy metric
 # -----------------------------------------------------------
 def compute_accuracy(logits, labels):
     preds = tf.argmax(logits, axis=1)
@@ -90,13 +88,15 @@ def compute_accuracy(logits, labels):
     return acc
 
 # -----------------------------------------------------------
-# Step 8: Training loop
+# Step 7: Training loop
 # -----------------------------------------------------------
 train_acc_hist, val_acc_hist = [], []
+
+print("\nStarting training...\n")
 for epoch in range(n_epochs):
     epoch_loss = 0.0
     n_batches = 0
-    t0 = time.time()
+    start = time.time()
 
     for x_batch, y_batch in train_data:
         with tf.GradientTape() as tape:
@@ -104,28 +104,25 @@ for epoch in range(n_epochs):
             loss_val = loss_fn(y_batch, logits)
         grads = tape.gradient(loss_val, [W, b])
         optimizer.apply_gradients(zip(grads, [W, b]))
-
         epoch_loss += loss_val.numpy()
         n_batches += 1
 
-    # Validation accuracy
     val_logits = model(val_X)
     val_acc = compute_accuracy(val_logits, val_y_oh).numpy()
     avg_loss = epoch_loss / n_batches
-    train_acc = val_acc  # (use val as proxy since logistic regression simple)
-    train_acc_hist.append(train_acc)
-    val_acc_hist.append(val_acc)
-    print(f"Epoch {epoch+1}/{n_epochs} | Loss={avg_loss:.4f} | Val Acc={val_acc:.4f} | Time={time.time()-t0:.2f}s")
+    print(f"Epoch {epoch+1:02d}/{n_epochs} | Loss={avg_loss:.4f} | Val Acc={val_acc*100:.2f}% | Time={time.time()-start:.2f}s")
+
+print("\nTraining complete ✅\n")
 
 # -----------------------------------------------------------
-# Step 9: Test accuracy
+# Step 8: Evaluate on Test Data
 # -----------------------------------------------------------
 test_logits = model(test_images)
 test_acc = compute_accuracy(test_logits, test_y_oh).numpy()
-print(f"\n✅ Final Test Accuracy: {test_acc*100:.2f}%")
+print(f"✅ Final Test Accuracy: {test_acc*100:.2f}%")
 
 # -----------------------------------------------------------
-# Step 10: Plot sample predictions
+# Step 9: Plot sample predictions
 # -----------------------------------------------------------
 def plot_images(images, y_true, y_pred=None):
     assert len(images) == len(y_true) == 9
@@ -147,7 +144,7 @@ y_pred = tf.argmax(tf.nn.softmax(model(sample_imgs)), axis=1).numpy()
 plot_images(sample_imgs, y_true, y_pred)
 
 # -----------------------------------------------------------
-# Step 11: Plot learned weights
+# Step 10: Plot learned weights
 # -----------------------------------------------------------
 def plot_weights(W):
     W = W.numpy()
@@ -165,7 +162,7 @@ def plot_weights(W):
 plot_weights(W)
 
 # -----------------------------------------------------------
-# Step 12: Compare with Random Forest and SVM
+# Step 11: Compare with Random Forest and SVM
 # -----------------------------------------------------------
 rf = RandomForestClassifier(n_estimators=50)
 rf.fit(train_X[:5000], train_y[:5000])
@@ -176,7 +173,7 @@ svm.fit(train_X[:2000], train_y[:2000])
 print("SVM test accuracy:", svm.score(test_images[:2000], test_labels[:2000]))
 
 # -----------------------------------------------------------
-# Step 13: Visualize weight clustering (t-SNE)
+# Step 12: Visualize weight clustering (t-SNE)
 # -----------------------------------------------------------
 W_np = W.numpy().T
 kmeans = KMeans(n_clusters=10, random_state=0).fit(W_np)
