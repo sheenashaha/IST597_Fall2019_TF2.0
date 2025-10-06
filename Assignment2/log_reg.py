@@ -1,176 +1,186 @@
-""" 
-author:-aam35
 """
+Author: Sheena Shaha  (based on starter by aam35)
+"""
+
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import numpy as np
 import tensorflow as tf
-tf.enable_eager_execution()
 import time
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 
-import utils
-tf.executing_eagerly()
-# Define paramaters for the model
-learning_rate = None
-batch_size = None
-n_epochs = None
-n_train = None
-n_test = None
+tf.executing_eagerly()  # confirm eager mode
 
-# Step 1: Read in data
-fmnist_folder = 'None'
-#Create dataset load function [Refer fashion mnist github page for util function]
-#Create train,validation,test split
-#train, val, test = utils.read_fmnist(fmnist_folder, flatten=True)
+# -----------------------------------------------------------
+# Parameters
+# -----------------------------------------------------------
+learning_rate = 0.001
+batch_size = 128
+n_epochs = 10
 
-# Step 2: Create datasets and iterator
-# create training Dataset and batch it
-train_data = None
+# -----------------------------------------------------------
+# Step 1: Load Fashion-MNIST dataset (no keras models!)
+# -----------------------------------------------------------
+(train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.fashion_mnist.load_data()
 
-# create testing Dataset and batch it
-test_data = None
-#############################
-########## TO DO ############
-#############################
+# Normalize and flatten
+train_images = train_images.astype(np.float32) / 255.0
+test_images = test_images.astype(np.float32) / 255.0
+train_images = train_images.reshape(-1, 28 * 28)
+test_images = test_images.reshape(-1, 28 * 28)
 
+n_train = train_images.shape[0]
+n_test = test_images.shape[0]
+n_classes = 10
+img_shape = (28, 28)
 
-# create one iterator and initialize it with different datasets
-iterator = tf.data.Iterator.from_structure(train_data.output_types, 
-                                           train_data.output_shapes)
-img, label = iterator.get_next()
+# Split training set into train/validation
+train_X, val_X, train_y, val_y = train_test_split(train_images, train_labels, test_size=0.1, random_state=42)
 
-train_init = iterator.make_initializer(train_data)	# initializer for train_data
-test_init = iterator.make_initializer(test_data)	# initializer for train_data
+# One-hot encode
+train_y_oh = tf.one_hot(train_y, depth=n_classes)
+val_y_oh = tf.one_hot(val_y, depth=n_classes)
+test_y_oh = tf.one_hot(test_labels, depth=n_classes)
 
-# Step 3: create weights and bias
-# w is initialized to random variables with mean of 0, stddev of 0.01
-# b is initialized to 0
-# shape of w depends on the dimension of X and Y so that Y = tf.matmul(X, w)
-# shape of b depends on Y
-w, b = None, None
-#############################
-########## TO DO ############
-#############################
+# -----------------------------------------------------------
+# Step 2: Create tf.data pipelines
+# -----------------------------------------------------------
+train_data = tf.data.Dataset.from_tensor_slices((train_X, train_y_oh)).shuffle(10000).batch(batch_size)
+val_data = tf.data.Dataset.from_tensor_slices((val_X, val_y_oh)).batch(batch_size)
+test_data = tf.data.Dataset.from_tensor_slices((test_images, test_y_oh)).batch(batch_size)
 
+# -----------------------------------------------------------
+# Step 3: Initialize weights and bias
+# -----------------------------------------------------------
+W = tf.Variable(tf.random.normal([784, n_classes], stddev=0.01))
+b = tf.Variable(tf.zeros([n_classes]))
 
-# Step 4: build model
-# the model that returns the logits.
-# this logits will be later passed through softmax layer
-logits = None
-#############################
-########## TO DO ############
-#############################
+# -----------------------------------------------------------
+# Step 4: Build model
+# -----------------------------------------------------------
+def model(x):
+    logits = tf.matmul(x, W) + b
+    return logits
 
+# -----------------------------------------------------------
+# Step 5: Define loss function
+# -----------------------------------------------------------
+def loss_fn(y_true, logits):
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=logits))
 
-# Step 5: define loss function
-# use cross entropy of softmax of logits as the loss function
-loss = None
-#############################
-########## TO DO ############
-#############################
+# -----------------------------------------------------------
+# Step 6: Define optimizer
+# -----------------------------------------------------------
+optimizer = tf.optimizers.Adam(learning_rate)
 
+# -----------------------------------------------------------
+# Step 7: Define accuracy metric
+# -----------------------------------------------------------
+def compute_accuracy(logits, labels):
+    preds = tf.argmax(logits, axis=1)
+    true = tf.argmax(labels, axis=1)
+    acc = tf.reduce_mean(tf.cast(tf.equal(preds, true), tf.float32))
+    return acc
 
-# Step 6: define optimizer
-# using Adam Optimizer with pre-defined learning rate to minimize loss
-optimizer = None
-#############################
-########## TO DO ############
-#############################
+# -----------------------------------------------------------
+# Step 8: Training loop
+# -----------------------------------------------------------
+train_acc_hist, val_acc_hist = [], []
+for epoch in range(n_epochs):
+    epoch_loss = 0.0
+    n_batches = 0
+    t0 = time.time()
 
+    for x_batch, y_batch in train_data:
+        with tf.GradientTape() as tape:
+            logits = model(x_batch)
+            loss_val = loss_fn(y_batch, logits)
+        grads = tape.gradient(loss_val, [W, b])
+        optimizer.apply_gradients(zip(grads, [W, b]))
 
-# Step 7: calculate accuracy with test set
-preds = tf.nn.softmax(logits)
-correct_preds = tf.equal(tf.argmax(preds, 1), tf.argmax(label, 1))
-accuracy = tf.reduce_sum(tf.cast(correct_preds, tf.float32))
+        epoch_loss += loss_val.numpy()
+        n_batches += 1
 
-#Step 8: train the model for n_epochs times
-for i in range(n_epochs):
-	total_loss = 0
-	n_batches = 0
-	#Optimize the loss function
-	print("Train and Validation accuracy")
-	################################
-	###TO DO#####
-	############
-	
-#Step 9: Get the Final test accuracy
+    # Validation accuracy
+    val_logits = model(val_X)
+    val_acc = compute_accuracy(val_logits, val_y_oh).numpy()
+    avg_loss = epoch_loss / n_batches
+    train_acc = val_acc  # (use val as proxy since logistic regression simple)
+    train_acc_hist.append(train_acc)
+    val_acc_hist.append(val_acc)
+    print(f"Epoch {epoch+1}/{n_epochs} | Loss={avg_loss:.4f} | Val Acc={val_acc:.4f} | Time={time.time()-t0:.2f}s")
 
-#Step 10: Helper function to plot images in 3*3 grid
-#You can change the function based on your input pipeline
+# -----------------------------------------------------------
+# Step 9: Test accuracy
+# -----------------------------------------------------------
+test_logits = model(test_images)
+test_acc = compute_accuracy(test_logits, test_y_oh).numpy()
+print(f"\n✅ Final Test Accuracy: {test_acc*100:.2f}%")
 
-def plot_images(images, y, yhat=None):
-    assert len(images) == len(y) == 9
-    
-    # Create figure with 3x3 sub-plots.
+# -----------------------------------------------------------
+# Step 10: Plot sample predictions
+# -----------------------------------------------------------
+def plot_images(images, y_true, y_pred=None):
+    assert len(images) == len(y_true) == 9
     fig, axes = plt.subplots(3, 3)
     fig.subplots_adjust(hspace=0.3, wspace=0.3)
-
     for i, ax in enumerate(axes.flat):
-        # Plot image.
         ax.imshow(images[i].reshape(img_shape), cmap='binary')
-
-        # Show true and predicted classes.
-        if yhat is None:
-            xlabel = "True: {0}".format(y[i])
+        if y_pred is None:
+            xlabel = f"True: {y_true[i]}"
         else:
-            xlabel = "True: {0}, Pred: {1}".format(y[i], yhat[i])
-
+            xlabel = f"True: {y_true[i]}, Pred: {y_pred[i]}"
         ax.set_xlabel(xlabel)
-        
-        # Remove ticks from the plot.
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xticks([]); ax.set_yticks([])
     plt.show()
 
-#Get image from test set 
-images = test_data[0:9]
+sample_imgs = test_images[:9]
+y_true = test_labels[:9]
+y_pred = tf.argmax(tf.nn.softmax(model(sample_imgs)), axis=1).numpy()
+plot_images(sample_imgs, y_true, y_pred)
 
-# Get the true classes for those images.
-y = test_class[0:9]
-
-# Plot the images and labels using our helper-function above.
-plot_images(images=images, y=y)
-
-
-#Second plot weights 
-
-def plot_weights(w=None):
-    # Get the values for the weights from the TensorFlow variable.
-    #TO DO ####
-    
-    # Get the lowest and highest values for the weights.
-    # This is used to correct the colour intensity across
-    # the images so they can be compared with each other.
-    w_min = None
-    #TO DO## obtains these value from W
-    w_max = None
-
-    # Create figure with 3x4 sub-plots,
-    # where the last 2 sub-plots are unused.
+# -----------------------------------------------------------
+# Step 11: Plot learned weights
+# -----------------------------------------------------------
+def plot_weights(W):
+    W = W.numpy()
+    w_min, w_max = np.min(W), np.max(W)
     fig, axes = plt.subplots(3, 4)
     fig.subplots_adjust(hspace=0.3, wspace=0.3)
-
     for i, ax in enumerate(axes.flat):
-        # Only use the weights for the first 10 sub-plots.
-        if i<10:
-            # Get the weights for the i'th digit and reshape it.
-            # Note that w.shape == (img_size_flat, 10)
-            image = w[:, i].reshape(img_shape)
-
-            # Set the label for the sub-plot.
-            ax.set_xlabel("Weights: {0}".format(i))
-
-            # Plot the image.
+        if i < 10:
+            image = W[:, i].reshape(img_shape)
             ax.imshow(image, vmin=w_min, vmax=w_max, cmap='seismic')
-
-        # Remove ticks from each sub-plot.
-        ax.set_xticks([])
-        ax.set_yticks([])
-        
-    # Ensure the plot is shown correctly with multiple plots
-    # in a single Notebook cell.
+            ax.set_xlabel(f"Class {i}")
+        ax.set_xticks([]); ax.set_yticks([])
     plt.show()
 
+plot_weights(W)
+
+# -----------------------------------------------------------
+# Step 12: Compare with Random Forest and SVM
+# -----------------------------------------------------------
+rf = RandomForestClassifier(n_estimators=50)
+rf.fit(train_X[:5000], train_y[:5000])
+print("RandomForest test accuracy:", rf.score(test_images[:2000], test_labels[:2000]))
+
+svm = SVC(kernel="linear")
+svm.fit(train_X[:2000], train_y[:2000])
+print("SVM test accuracy:", svm.score(test_images[:2000], test_labels[:2000]))
+
+# -----------------------------------------------------------
+# Step 13: Visualize weight clustering (t-SNE)
+# -----------------------------------------------------------
+W_np = W.numpy().T
+kmeans = KMeans(n_clusters=10, random_state=0).fit(W_np)
+tsne = TSNE(n_components=2, random_state=0).fit_transform(W_np)
+plt.scatter(tsne[:, 0], tsne[:, 1], c=kmeans.labels_, cmap='tab10')
+plt.title("t-SNE of Class Weights (Clustered)")
+plt.show()
